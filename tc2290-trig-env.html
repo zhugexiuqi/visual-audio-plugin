@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TC 2290 · Trig/Env 包络触发可视化</title>
+<style>
+  :root{
+    --bg:#0e1116;
+    --panel:#161b23;
+    --panel2:#1c232d;
+    --border:#2a3542;
+    --text:#d7dee8;
+    --dim:#8a97a6;
+    --cyan:#3ddad7;
+    --cyan2:#7ff0ec;
+    --orange:#ff8a3d;
+    --green:#55e07a;
+    --purple:#a78bfa;
+    --yellow:#ffd166;
+    --red:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+    min-height:100vh;
+  }
+  header{
+    padding:18px 22px 14px;
+    border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#131924,#0e1116);
+  }
+  header h1{margin:0 0 6px;font-size:20px;letter-spacing:.5px;}
+  header h1 .acc{color:var(--cyan);}
+  header p{margin:0;color:var(--dim);font-size:13px;line-height:1.6;max-width:980px;}
+  header p b{color:var(--text);}
+
+  main{
+    display:grid;
+    grid-template-columns:1.05fr 1.55fr .92fr;
+    gap:14px;
+    padding:14px 16px 22px;
+    align-items:start;
+  }
+  @media (max-width:1150px){
+    main{grid-template-columns:1fr;}
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px 14px;
+  }
+  .panel h2{
+    margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;
+    letter-spacing:1.2px;color:var(--dim);
+    display:flex;align-items:center;gap:8px;
+  }
+  .panel h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+
+  /* ---------- Piano ---------- */
+  .piano-wrap{position:relative;width:100%;user-select:none;-webkit-user-select:none;touch-action:none;}
+  .white-row{display:flex;}
+  .key{
+    cursor:pointer;
+    position:relative;
+  }
+  .key.white{
+    flex:1;height:150px;
+    background:linear-gradient(180deg,#fbfbf6,#e6e7e0);
+    border:1px solid #1b1e22;
+    border-radius:0 0 6px 6px;
+  }
+  .key.white:hover{background:#f0efe6;}
+  .key.white.active{background:linear-gradient(180deg,#ffe08a,#f2c14e);}
+  .key.black{
+    position:absolute;top:0;height:92px;
+    background:linear-gradient(180deg,#3a3f47,#0d0f12);
+    border:1px solid #000;
+    border-radius:0 0 4px 4px;
+    box-shadow:0 3px 5px rgba(0,0,0,.5);
+    z-index:2;
+  }
+  .key.black:hover{background:linear-gradient(180deg,#4a5058,#1a1d22);}
+  .key.black.active{background:linear-gradient(180deg,#f2c14e,#c98f1b);}
+  .key .lbl{
+    position:absolute;bottom:6px;left:0;right:0;text-align:center;
+    font-size:10px;color:#8a8a8a;pointer-events:none;
+  }
+  .key.black .lbl{color:#9aa0a8;}
+  .key.white.hl-c .lbl{color:#0a7a6b;font-weight:700;}
+  .hint{margin-top:8px;color:var(--dim);font-size:12px;}
+
+  /* ---------- Flow diagram ---------- */
+  .flow{
+    display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+    margin-top:12px;font-size:11.5px;
+  }
+  .flow-box{
+    background:var(--panel2);border:1px solid var(--border);
+    border-radius:8px;padding:7px 9px;text-align:center;line-height:1.35;
+  }
+  .flow-box .v{font-family:Consolas,monospace;font-weight:700;font-size:14px;}
+  .flow-box.env .v{color:var(--cyan);}
+  .flow-box.trig .v{color:var(--orange);}
+  .flow-box.lvl .v{color:var(--green);}
+  .flow-box.dly .v{color:var(--purple);}
+  .flow-arrow{color:var(--dim);font-size:15px;}
+  .flow-box.tag{font-size:9px;color:var(--dim);letter-spacing:.5px;}
+
+  /* ---------- Viz ---------- */
+  .viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .viz-grid .full{grid-column:1 / -1;}
+  canvas{display:block;width:100%;border-radius:8px;background:#0a0d11;border:1px solid var(--border);}
+  #scope{height:180px;}
+  #chartEnv,#chartDly{height:140px;}
+  #transfer{height:150px;}
+  .cap{font-size:10.5px;color:var(--dim);margin:4px 2px 0;letter-spacing:.3px;}
+  .cap .k{color:var(--text);font-weight:600;}
+
+  .meter-row{display:flex;align-items:stretch;gap:14px;}
+  .meter-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;}
+  .meter-v{
+    width:46px;height:130px;background:#0a0d11;border:1px solid var(--border);
+    border-radius:8px;position:relative;overflow:hidden;
+  }
+  .meter-fill{
+    position:absolute;left:0;right:0;bottom:0;
+    background:linear-gradient(180deg,var(--cyan2),var(--cyan));
+    height:0%;transition:none;
+    box-shadow:0 0 12px rgba(61,218,215,.5);
+  }
+  .meter-th{
+    position:absolute;left:0;right:0;height:0;border-top:1.5px dashed var(--orange);
+    z-index:2;
+  }
+  .meter-v .scale{position:absolute;left:4px;top:2px;font-size:9px;color:#4b5563;z-index:3;}
+  .meter-v .scale.b{top:auto;bottom:2px;}
+  .led{
+    width:16px;height:16px;border-radius:50%;background:#2a2f36;
+    border:1px solid #000;box-shadow:inset 0 0 4px rgba(0,0,0,.7);
+    transition:background .08s, box-shadow .08s;
+  }
+  .led.on{background:var(--orange);box-shadow:0 0 12px var(--orange), inset 0 0 3px rgba(255,255,255,.5);}
+  .led.gate{background:var(--yellow);box-shadow:0 0 8px var(--yellow);}
+
+  /* ---------- Controls ---------- */
+  .ctl{display:grid;grid-template-columns:1fr minmax(70px,1.25fr) 64px;align-items:center;gap:8px;margin:8px 0;}
+  .ctl label{font-size:12.5px;color:var(--text);}
+  .ctl label small{color:var(--dim);font-size:10.5px;display:block;}
+  .ctl input[type=range]{width:100%;accent-color:var(--cyan);cursor:pointer;}
+  .ctl input.val{
+    width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:6px;
+    color:var(--cyan2);font-family:Consolas,monospace;font-size:12px;
+    padding:4px 6px;text-align:right;outline:none;
+  }
+  .ctl input.val.orange{color:var(--orange);}
+  .ctl input.val.purple{color:var(--purple);}
+  .ctl input.val:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(61,218,215,.18);}
+  .group-title{
+    font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);
+    margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--border);
+  }
+  .group-title:first-child{margin-top:0;padding-top:0;border-top:none;}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:8px 0;cursor:pointer;}
+  .chk input{accent-color:var(--orange);width:15px;height:15px;cursor:pointer;}
+  select{
+    background:var(--panel2);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:4px 6px;font-size:12.5px;width:100%;cursor:pointer;
+  }
+  .legend{font-size:11px;color:var(--dim);line-height:1.7;}
+  .legend .c{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>TC ELECTRONIC <span class="acc">2290</span> · Trig / Env 包络触发可视化</h1>
+  <p>
+    还原 2290 的 <b>ENV（包络跟随）</b>与 <b>TRIG（阈值触发）</b>逻辑：检测<b>输入信号电平</b>，
+    生成一条平滑的<b>包络信号</b>；包络可去调制<b>延迟时间</b>，同时当包络越过<b>阈值</b>时发出一次 <b>TRIG</b> 触发（可复位 LFO 相位）。
+    点击下方琴键，声音进入延迟效果器，右侧实时显示包络与触发过程。
+  </p>
+</header>
+
+<main>
+  <!-- ===== Piano ===== -->
+  <section class="panel">
+    <h2><span class="dot"></span>信号源 · 钢琴</h2>
+    <div class="piano-wrap" id="pianoWrap"></div>
+    <div class="hint">点击琴键（或键盘 A–K 等）发声 · 声音送入延迟器并参与包络检测</div>
+    <label class="chk" style="margin-top:10px;">
+      <input id="padMode" type="checkbox">
+      Pad 持续模式：按住持续发声（可弹和弦），松开渐停
+    </label>
+
+    <div class="flow">
+      <div class="flow-box tag">钢琴</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box lvl">输入电平<span class="v" id="fbLevel">0.000</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box env">包络 ENV<span class="v" id="fbEnv">0.000</span></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box dly">调制延迟时间<span class="v" id="fbDly">0.0 ms</span></div>
+      <div class="flow-arrow">↳</div>
+      <div class="flow-box trig">阈值比较 → TRIG<span class="v" id="fbTrig">0</span></div>
+    </div>
+  </section>
+
+  <!-- ===== Viz ===== -->
+  <section class="panel">
+    <h2><span class="dot"></span>实时可视化</h2>
+    <div class="viz-grid">
+      <div class="full">
+        <canvas id="scope" height="180"></canvas>
+        <div class="cap"><span class="k">波形</span>（绿） · <span class="k">包络 ENV</span>（青） · <span class="k">阈值 THR</span>（橙虚线）· 越过阈值时背景闪橙</div>
+      </div>
+      <div>
+        <canvas id="chartEnv" height="140"></canvas>
+        <div class="cap"><span class="k">包络曲线</span> 0–1（青）· 阈值（橙虚线）</div>
+      </div>
+      <div>
+        <canvas id="chartDly" height="140"></canvas>
+        <div class="cap"><span class="k">延迟时间</span> 实际值（紫）· 基准时间（灰虚线）</div>
+      </div>
+      <div>
+        <canvas id="transfer" height="150"></canvas>
+        <div class="cap"><span class="k">包络 → 延迟时间</span> 传递曲线，亮点为当前工作点</div>
+      </div>
+      <div class="meter-row">
+        <div class="meter-col">
+          <div class="meter-v">
+            <span class="scale">1.0</span>
+            <span class="scale b">0</span>
+            <div class="meter-th" id="meterTh"></div>
+            <div class="meter-fill" id="meterFill"></div>
+          </div>
+          <div class="cap">ENV 电平</div>
+          <div class="led" id="ledGate"></div>
+          <div class="cap">门限(Gate)</div>
+        </div>
+        <div class="meter-col" style="justify-content:center;">
+          <div class="led" id="ledTrig" style="width:26px;height:26px;"></div>
+          <div class="cap" style="text-align:center;">TRIG 触发<br>计数 <b id="trigCount" style="color:var(--orange);">0</b></div>
+        </div>
+        <div class="meter-col" style="justify-content:flex-end;">
+          <div style="font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9;">
+            ENV <span id="numEnv" style="color:var(--cyan);">0.000</span><br>
+            RMS <span id="numRms" style="color:var(--green);">0.000</span><br>
+            延迟 <span id="numDly" style="color:var(--purple);">0.0ms</span><br>
+            LFO <span id="numLfo" style="color:var(--purple);">+0.00</span><br>
+            声相 <span id="numPan" style="color:var(--purple);">C</span><br>
+            音量 <span id="numVol" style="color:var(--purple);">100%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Controls ===== -->
+  <aside class="panel">
+    <h2><span class="dot" style="background:var(--orange);box-shadow:0 0 8px var(--orange);"></span>参数控制</h2>
+
+    <div class="group-title">延迟 DELAY</div>
+    <div class="ctl">
+      <label>延迟时间<small>Delay Time · ms</small></label>
+      <input id="delayTime" type="range" min="1" max="1500" step="1" value="420">
+      <input class="val" id="vDelayTime" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="420">
+    </div>
+    <div class="ctl">
+      <label>反馈<small>Feedback · %</small></label>
+      <input id="feedback" type="range" min="0" max="0.92" step="0.01" value="0.40">
+      <input class="val" id="vFeedback" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="40">
+    </div>
+    <div class="ctl">
+      <label>干湿比<small>Mix · %（0=全干 / 100=全湿）</small></label>
+      <input id="mix" type="range" min="0" max="1" step="0.01" value="0.5">
+      <input class="val" id="vMix" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="50">
+    </div>
+
+    <div class="group-title">包络 ENVELOPE</div>
+    <div class="ctl">
+      <label>灵敏度<small>Sensitivity · ×</small></label>
+      <input id="sensitivity" type="range" min="0.5" max="8" step="0.1" value="2">
+      <input class="val" id="vSensitivity" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="2.0">
+    </div>
+    <div class="ctl">
+      <label>启动<small>Attack · ms</small></label>
+      <input id="attack" type="range" min="1" max="200" step="1" value="5">
+      <input class="val" id="vAttack" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="5">
+    </div>
+    <div class="ctl">
+      <label>释放<small>Release · ms</small></label>
+      <input id="release" type="range" min="20" max="1500" step="5" value="180">
+      <input class="val" id="vRelease" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="180">
+    </div>
+
+    <div class="group-title">触发 TRIG</div>
+    <div class="ctl">
+      <label>阈值<small>Threshold · 0–1</small></label>
+      <input id="threshold" type="range" min="0.02" max="0.9" step="0.01" value="0.30">
+      <input class="val orange" id="vThreshold" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0.30">
+    </div>
+    <label class="chk">
+      <input id="trigResetsLfo" type="checkbox" checked>
+      触发时复位 LFO 相位
+    </label>
+
+    <div class="group-title">调制 MODULATION</div>
+    <div class="ctl">
+      <label>包络→延迟时间<small>ENV Depth · ms（正=越响延迟越长）</small></label>
+      <input id="envDepth" type="range" min="-40" max="40" step="1" value="12">
+      <input class="val" id="vEnvDepth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="+12">
+    </div>
+    <div class="ctl">
+      <label>LFO→延迟时间<small>LFO Depth · ms</small></label>
+      <input id="lfoDepth" type="range" min="0" max="40" step="0.5" value="0">
+      <input class="val purple" id="vLfoDepth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0.0">
+    </div>
+    <div class="ctl">
+      <label>LFO 速率<small>Rate · Hz</small></label>
+      <input id="lfoRate" type="range" min="0.05" max="12" step="0.05" value="0.4">
+      <input class="val purple" id="vLfoRate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0.40">
+    </div>
+    <div class="ctl">
+      <label>音量调制<small>Tremolo Depth · %（LFO→音量）</small></label>
+      <input id="volDepth" type="range" min="0" max="1" step="0.01" value="0">
+      <input class="val purple" id="vVolDepth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0">
+    </div>
+    <div class="ctl">
+      <label>声相调制<small>Auto-Pan Depth · %（LFO→左右）</small></label>
+      <input id="panDepth" type="range" min="0" max="1" step="0.01" value="0">
+      <input class="val purple" id="vPanDepth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="0">
+    </div>
+    <div class="ctl">
+      <label>LFO 波形<small>Waveform</small></label>
+      <select id="lfoWave" style="grid-column:2 / 4;">
+        <option value="sine">正弦 Sine</option>
+        <option value="triangle">三角 Triangle</option>
+        <option value="square">方波 Square</option>
+        <option value="saw">锯齿 Saw</option>
+      </select>
+    </div>
+
+    <div class="group-title">图例</div>
+    <div class="legend">
+      <span><span class="c" style="background:var(--green);"></span>输入波形</span><br>
+      <span><span class="c" style="background:var(--cyan);"></span>包络 ENV（电平平滑结果）</span><br>
+      <span><span class="c" style="background:var(--orange);"></span>阈值 / TRIG 触发</span><br>
+      <span><span class="c" style="background:var(--purple);"></span>延迟时间（被调制）</span>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+/* ================= 音频与状态 ================= */
+let ctx = null;
+let pianoBus, masterInput, analyser, dryGain, wetGain, delayNode, feedbackGain, masterOut, comp, panNode, tremGain;
+let timeData = null;
+
+const P = {
+  delayTime: 420, feedback: 0.40, mix: 0.5,
+  sensitivity: 2, attack: 5, release: 180,
+  threshold: 0.30, trigResetsLfo: true, padMode: false,
+  envDepth: 12, lfoDepth: 0, lfoRate: 0.4, lfoWave: 'sine',
+  volDepth: 0, panDepth: 0,
+};
+
+let env = 0;            // 平滑包络 0..1
+let rawRms = 0;         // 当前 RMS
+let prevGate = false;   // 上一帧是否在阈值之上
+let trigFlashUntil = 0;
+let trigCount = 0;
+let lfoPhase = 0;
+let lfoValue = 0;
+let panVal = 0;
+let tremVal = 1;
+let currentDelay = P.delayTime;
+const activePadNotes = new Map(); // Pad 模式下持续发声的音
+
+const HIST_LEN = 512;
+const envHist = new Float32Array(HIST_LEN);
+const dlyHist = new Float32Array(HIST_LEN);
+let histIdx = 0, histCount = 0;
+
+/* ================= 钢琴 ================= */
+const LOW = 48, HIGH = 84;  // C3 .. C6
+const BLACK = new Set([1,3,6,8,10]);
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const freqOf = m => 440 * Math.pow(2, (m - 69) / 12);
+const nameOf = m => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+
+const whiteNotes = [], blackNotes = [];
+for (let m = LOW; m <= HIGH; m++) (BLACK.has(m % 12) ? blackNotes : whiteNotes).push(m);
+
+const KEYMAP = {
+  a:60, w:61, s:62, e:63, d:64, f:65, t:66, g:67, y:68, h:69, u:70, j:71,
+  k:72, o:73, l:74, p:75, ';':76, "'":77,
+};
+
+function buildPiano(){
+  const wrap = document.getElementById('pianoWrap');
+  const row = document.createElement('div');
+  row.className = 'white-row';
+  const whiteCount = whiteNotes.length;
+  const blackW = 0.60 / whiteCount * 100;
+
+  const mk = (m, cls) => {
+    const k = document.createElement('div');
+    k.className = 'key ' + cls;
+    k.dataset.midi = m;
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = nameOf(m);
+    k.appendChild(lbl);
+    k.addEventListener('pointerdown', e => { e.preventDefault(); k.setPointerCapture(e.pointerId); press(m, k); });
+    k.addEventListener('pointerup',   e => { e.preventDefault(); release(m, k); });
+    k.addEventListener('pointercancel', e => { e.preventDefault(); release(m, k); });
+    return k;
+  };
+
+  whiteNotes.forEach(m => row.appendChild(mk(m, 'white')));
+  wrap.appendChild(row);
+
+  blackNotes.forEach(m => {
+    const whiteBefore = whiteNotes.filter(w => w < m).length;
+    const left = (whiteBefore / whiteCount) * 100 - blackW / 2;
+    const k = mk(m, 'black');
+    k.style.width = blackW + '%';
+    k.style.left = left + '%';
+    wrap.appendChild(k);
+  });
+
+  // 高亮 C 键
+  document.querySelectorAll('.key.white').forEach(k => {
+    if (nameOf(+k.dataset.midi).startsWith('C')) k.classList.add('hl-c');
+  });
+}
+
+function press(m, el){
+  ensureCtx();
+  if (el) el.classList.add('active');
+  if (P.padMode) padNoteOn(m, 0.7 + Math.random() * 0.1);
+  else playNote(m, 0.85 + Math.random() * 0.12);
+}
+function release(m, el){
+  if (el) el.classList.remove('active');
+  if (P.padMode) padNoteOff(m);
+}
+
+/* ================= Pad 持续发声 ================= */
+function padNoteOn(midi, vel){
+  if (activePadNotes.has(midi)) return;      // 已按住则忽略重复触发
+  const t = ctx.currentTime;
+  const f = freqOf(midi);
+
+  const voice = ctx.createGain();            // 单音总增益：慢启动 / 慢释放
+  voice.gain.setValueAtTime(0.0001, t);
+  voice.gain.exponentialRampToValueAtTime(0.95, t + 0.35);
+  voice.connect(pianoBus);
+
+  const partials = [
+    {r:1, g:0.34},
+    {r:2, g:0.15},
+    {r:3, g:0.08},
+    {r:4, g:0.05},
+    {r:6, g:0.03},
+  ];
+  const oscs = [];
+  for (const p of partials){
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f * p.r;
+    osc.detune.value = (Math.random() - 0.5) * 5;
+    const g = ctx.createGain();
+    g.gain.value = p.g * vel;
+    osc.connect(g); g.connect(voice);
+    osc.start(t);
+    oscs.push(osc);
+  }
+  // 微失谐正弦叠层，让长音更饱满
+  const det = ctx.createOscillator();
+  det.type = 'sine';
+  det.frequency.value = f;
+  det.detune.value = 7;
+  const dg = ctx.createGain();
+  dg.gain.value = 0.15 * vel;
+  det.connect(dg); dg.connect(voice);
+  det.start(t);
+  oscs.push(det);
+
+  activePadNotes.set(midi, { voice, oscs });
+}
+
+function padNoteOff(midi){
+  const n = activePadNotes.get(midi);
+  if (!n) return;
+  const t = ctx.currentTime;
+  const cur = Math.max(n.voice.gain.value, 0.0001);
+  n.voice.gain.cancelScheduledValues(t);
+  n.voice.gain.setValueAtTime(cur, t);
+  n.voice.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+  n.oscs.forEach(o => { try { o.stop(t + 0.8); } catch(e){} });
+  activePadNotes.delete(midi);
+}
+
+function allPadOff(){
+  Array.from(activePadNotes.keys()).forEach(m => padNoteOff(m));
+}
+
+/* ================= 音频图 ================= */
+function ensureCtx(){
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  pianoBus = ctx.createGain(); pianoBus.gain.value = 1;
+  masterInput = ctx.createGain(); masterInput.gain.value = 1;
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0;
+  timeData = new Float32Array(analyser.fftSize);
+
+  dryGain = ctx.createGain(); dryGain.gain.value = Math.cos(P.mix * Math.PI / 2);
+  wetGain = ctx.createGain(); wetGain.gain.value = Math.sin(P.mix * Math.PI / 2);
+  delayNode = ctx.createDelay(2.0);
+  delayNode.delayTime.value = P.delayTime / 1000;
+  feedbackGain = ctx.createGain(); feedbackGain.gain.value = P.feedback;
+
+  panNode = ctx.createStereoPanner(); panNode.pan.value = 0;
+  tremGain = ctx.createGain(); tremGain.gain.value = 1;
+  masterOut = ctx.createGain(); masterOut.gain.value = 0.7;
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 8; comp.knee.value = 20;
+
+  pianoBus.connect(masterInput);
+  masterInput.connect(analyser);           // 包络检测（tapped）
+  masterInput.connect(dryGain);
+  masterInput.connect(delayNode);
+  delayNode.connect(wetGain);
+  delayNode.connect(feedbackGain);
+  feedbackGain.connect(delayNode);
+  dryGain.connect(panNode);
+  wetGain.connect(panNode);
+  panNode.connect(tremGain);
+  tremGain.connect(masterOut);
+  masterOut.connect(comp);
+  comp.connect(ctx.destination);
+
+  currentDelay = P.delayTime;
+}
+
+function playNote(midi, vel){
+  const t = ctx.currentTime;
+  const f = freqOf(midi);
+  const partials = [
+    {r:1,   g:0.62, d:2.6},
+    {r:2,   g:0.30, d:1.7},
+    {r:3,   g:0.17, d:1.1},
+    {r:4,   g:0.10, d:0.7},
+    {r:5,   g:0.06, d:0.45},
+    {r:6.02,g:0.04, d:0.30},
+  ];
+  for (const p of partials){
+    const osc = ctx.createOscillator();
+    osc.type = p.r === 1 ? 'triangle' : 'triangle';
+    osc.frequency.value = f * p.r;
+    osc.detune.value = (Math.random() - 0.5) * 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(p.g * vel, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + p.d);
+    osc.connect(g); g.connect(pianoBus);
+    osc.start(t); osc.stop(t + p.d + 0.2);
+  }
+  // 锤击噪声
+  const nbuf = (() => {
+    const len = 2048, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/len, 3);
+    return b;
+  })();
+  const noise = ctx.createBufferSource(); noise.buffer = nbuf;
+  const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 1200;
+  const ng = ctx.createGain(); ng.gain.value = 0.12 * vel;
+  noise.connect(nf); nf.connect(ng); ng.connect(pianoBus);
+  noise.start(t);
+}
+
+/* ================= 包络 / 触发 / 调制 ================= */
+function lfoWaveFunc(phase){
+  switch (P.lfoWave){
+    case 'triangle': return (2/Math.PI) * Math.asin(Math.sin(phase));
+    case 'square':   return Math.sin(phase) >= 0 ? 1 : -1;
+    case 'saw':      return ((phase % (2*Math.PI)) / Math.PI) - 1;
+    default:         return Math.sin(phase);
+  }
+}
+
+function fireTrigger(){
+  trigCount++;
+  trigFlashUntil = performance.now() + 150;
+  if (P.trigResetsLfo) lfoPhase = 0;
+  const led = document.getElementById('ledTrig');
+  led.classList.add('on');
+  setTimeout(() => led.classList.remove('on'), 150);
+}
+
+function update(dt){
+  // 读取 RMS 电平
+  analyser.getFloatTimeDomainData(timeData);
+  let sum = 0;
+  for (let i = 0; i < timeData.length; i++){ const v = timeData[i]; sum += v * v; }
+  rawRms = Math.sqrt(sum / timeData.length);
+
+  const target = Math.min(1, rawRms * P.sensitivity);
+
+  // 包络：attack / release 一阶平滑（时间常数）
+  const tau = (target > env ? P.attack : P.release) / 1000;
+  const alpha = 1 - Math.exp(-dt / Math.max(tau, 1e-4));
+  env += alpha * (target - env);
+  if (env < 0.0001) env = 0;
+
+  // 触发：上升沿越过阈值
+  const gate = env >= P.threshold;
+  if (gate && !prevGate) fireTrigger();
+  prevGate = gate;
+
+  // LFO 相位推进
+  lfoPhase += 2 * Math.PI * P.lfoRate * dt;
+  if (lfoPhase > 1e4) lfoPhase -= 2 * Math.PI * Math.floor(lfoPhase / (2*Math.PI));
+  lfoValue = lfoWaveFunc(lfoPhase);
+
+  // 延迟时间 = 基准 + 包络调制 + LFO 调制
+  const envBip = (env - 0.5) * 2;   // -1..1
+  const t = P.delayTime + P.envDepth * envBip + P.lfoDepth * lfoValue;
+  currentDelay = Math.max(1, Math.min(2000, t));
+  delayNode.delayTime.setTargetAtTime(currentDelay / 1000, ctx.currentTime, 0.02);
+
+  // 音量（颤音 Tremolo）与声相（自动声像 Auto-Pan）调制
+  panVal = Math.max(-1, Math.min(1, P.panDepth * lfoValue));
+  tremVal = Math.max(0, Math.min(1, 1 - P.volDepth * (0.5 + 0.5 * lfoValue)));
+  panNode.pan.setTargetAtTime(panVal, ctx.currentTime, 0.01);
+  tremGain.gain.setTargetAtTime(tremVal, ctx.currentTime, 0.01);
+
+  // 历史记录
+  envHist[histIdx] = env;
+  dlyHist[histIdx] = currentDelay;
+  histIdx = (histIdx + 1) % HIST_LEN;
+  if (histCount < HIST_LEN) histCount++;
+}
+
+/* ================= Canvas 工具 ================= */
+const canvasInfo = new WeakMap();
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  let info = canvasInfo.get(cv);
+  if (!info){
+    // 逻辑高度只在首次读取一次，绝不回读被位图缩放污染后的 height 属性
+    info = { h: parseInt(cv.getAttribute('height'), 10) || 150 };
+    canvasInfo.set(cv, info);
+  }
+  const w = cv.clientWidth || cv.parentElement.clientWidth || 300;
+  const pw = Math.round(w * dpr);
+  const ph = Math.round(info.h * dpr);
+  // 仅在尺寸真正变化时才重建位图，避免每帧重置 canvas 导致闪烁
+  if (cv.width !== pw || cv.height !== ph){
+    cv.width = pw;
+    cv.height = ph;
+  }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c, w, h: info.h };
+}
+
+function drawScope(){
+  const cv = document.getElementById('scope');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  // 触发闪屏
+  if (performance.now() < trigFlashUntil){
+    const a = 1 - (trigFlashUntil - performance.now()) / 150;
+    c.fillStyle = 'rgba(255,138,61,' + (0.22 * a) + ')';
+    c.fillRect(0, 0, w, h);
+  }
+
+  // 网格
+  c.strokeStyle = 'rgba(255,255,255,0.05)';
+  c.lineWidth = 1;
+  for (let g = 0; g <= 4; g++){
+    const y = (h/4) * g;
+    c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke();
+  }
+  c.beginPath(); c.moveTo(0,h/2); c.lineTo(w,h/2); c.stroke();
+
+  // 波形（音频上下文创建前 timeData 为空，仅绘制网格/阈值）
+  if (timeData){
+    const n = timeData.length;
+    c.strokeStyle = '#55e07a';
+    c.lineWidth = 1.4;
+    c.beginPath();
+    for (let i = 0; i < n; i++){
+      const x = (i / (n-1)) * w;
+      const y = h/2 - timeData[i] * (h/2) * 0.92;
+      i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+    }
+    c.stroke();
+  }
+
+  // 包络线（水平） + 填充
+  const ey = h - env * h;
+  c.fillStyle = 'rgba(61,218,215,0.10)';
+  c.fillRect(0, ey, w, h - ey);
+  c.strokeStyle = '#3ddad7';
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(0, ey); c.lineTo(w, ey); c.stroke();
+  c.fillStyle = '#7ff0ec';
+  c.beginPath(); c.arc(w - 12, ey, 4, 0, Math.PI * 2); c.fill();
+
+  // 阈值虚线
+  const ty = h - P.threshold * h;
+  c.strokeStyle = '#ff8a3d';
+  c.lineWidth = 1.2;
+  c.setLineDash([6,4]);
+  c.beginPath(); c.moveTo(0, ty); c.lineTo(w, ty); c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = '#ff8a3d';
+  c.font = '10px Consolas';
+  c.fillText('THR ' + P.threshold.toFixed(2), 6, ty - 4);
+}
+
+function drawChartEnv(){
+  const cv = document.getElementById('chartEnv');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  c.strokeStyle = 'rgba(255,255,255,0.05)';
+  c.beginPath(); c.moveTo(0,h/2); c.lineTo(w,h/2); c.stroke();
+
+  // 阈值
+  const ty = h - P.threshold * h;
+  c.strokeStyle = '#ff8a3d'; c.lineWidth = 1; c.setLineDash([4,4]);
+  c.beginPath(); c.moveTo(0,ty); c.lineTo(w,ty); c.stroke(); c.setLineDash([]);
+
+  // 包络曲线（滚动）
+  c.strokeStyle = '#3ddad7'; c.lineWidth = 1.6;
+  c.beginPath();
+  for (let i = 0; i < histCount; i++){
+    const idx = (histIdx - histCount + i + HIST_LEN) % HIST_LEN;
+    const x = (i / (HIST_LEN-1)) * w;
+    const y = h - envHist[idx] * h;
+    i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+  }
+  c.stroke();
+}
+
+function drawChartDly(){
+  const cv = document.getElementById('chartDly');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  let lo = P.delayTime, hi = P.delayTime;
+  for (let i = 0; i < histCount; i++){
+    const idx = (histIdx - histCount + i + HIST_LEN) % HIST_LEN;
+    lo = Math.min(lo, dlyHist[idx]); hi = Math.max(hi, dlyHist[idx]);
+  }
+  const pad = Math.max(6, (hi - lo) * 0.18 + 2);
+  lo -= pad; hi += pad;
+
+  // 基准虚线
+  const by = h - (P.delayTime - lo) / (hi - lo) * h;
+  c.strokeStyle = 'rgba(255,255,255,0.22)'; c.lineWidth = 1; c.setLineDash([4,4]);
+  c.beginPath(); c.moveTo(0,by); c.lineTo(w,by); c.stroke(); c.setLineDash([]);
+
+  // 延迟时间曲线
+  c.strokeStyle = '#a78bfa'; c.lineWidth = 1.6;
+  c.beginPath();
+  for (let i = 0; i < histCount; i++){
+    const idx = (histIdx - histCount + i + HIST_LEN) % HIST_LEN;
+    const x = (i / (HIST_LEN-1)) * w;
+    const y = h - (dlyHist[idx] - lo) / (hi - lo) * h;
+    i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+  }
+  c.stroke();
+
+  // 当前值
+  c.fillStyle = '#c4b5fd'; c.font = '10px Consolas';
+  c.fillText(currentDelay.toFixed(1) + ' ms', 6, 12);
+}
+
+function drawTransfer(){
+  const cv = document.getElementById('transfer');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  const depth = Math.max(Math.abs(P.envDepth), Math.abs(P.lfoDepth), 1) + 8;
+  const base = P.delayTime;
+  const xToEnv = x => x / w;
+  const envToY = e => h - ((base + P.envDepth * (e*2-1)) - (base - depth)) / (2*depth) * h;
+
+  // 轴
+  c.strokeStyle = 'rgba(255,255,255,0.08)';
+  c.beginPath(); c.moveTo(0,0); c.lineTo(0,h); c.lineTo(w,h); c.stroke();
+
+  // 基准中线
+  const baseY = envToY(0.5);
+  c.strokeStyle = 'rgba(255,255,255,0.2)'; c.setLineDash([4,4]);
+  c.beginPath(); c.moveTo(0,baseY); c.lineTo(w,baseY); c.stroke(); c.setLineDash([]);
+
+  // 传递曲线：y = base + envDepth*(2e-1)
+  c.strokeStyle = '#3ddad7'; c.lineWidth = 2;
+  c.beginPath();
+  for (let x = 0; x <= w; x += 2){
+    const y = envToY(xToEnv(x));
+    x === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+  }
+  c.stroke();
+
+  // LFO 作用带（当前 LFO 值使工作点上下浮动）
+  const lfoY = baseY - (P.lfoDepth * lfoValue) / (2*depth) * h;
+  c.strokeStyle = 'rgba(167,139,250,0.35)'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, lfoY); c.lineTo(w, lfoY); c.stroke();
+
+  // 当前工作点
+  const cx = env * w;
+  const cy = h - (currentDelay - (base - depth)) / (2*depth) * h;
+  c.fillStyle = '#ffd166';
+  c.beginPath(); c.arc(cx, cy, 5, 0, Math.PI*2); c.fill();
+  c.strokeStyle = '#0e1116'; c.lineWidth = 1.5; c.stroke();
+
+  c.fillStyle = '#8a97a6'; c.font = '10px Consolas';
+  c.fillText('ENV →', 6, 12);
+  c.fillText('延迟 ↑', 4, h - 6);
+  c.fillText('基准 ' + base.toFixed(0) + 'ms', w - 70, baseY - 4);
+}
+
+/* ================= UI 绑定 ================= */
+const PARAM_DEFS = [
+  { id:'delayTime',   key:'delayTime',   dec:0, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'feedback',    key:'feedback',    dec:0, signed:false, disp:v=>v*100, parse:v=>v/100 },
+  { id:'mix',         key:'mix',         dec:0, signed:false, disp:v=>v*100, parse:v=>v/100 },
+  { id:'sensitivity', key:'sensitivity', dec:1, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'attack',      key:'attack',      dec:0, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'release',     key:'release',     dec:0, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'threshold',   key:'threshold',   dec:2, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'envDepth',    key:'envDepth',    dec:0, signed:true,  disp:v=>v,     parse:v=>v },
+  { id:'lfoDepth',    key:'lfoDepth',    dec:1, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'lfoRate',     key:'lfoRate',     dec:2, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'volDepth',    key:'volDepth',    dec:0, signed:false, disp:v=>v*100, parse:v=>v/100 },
+  { id:'panDepth',    key:'panDepth',    dec:0, signed:false, disp:v=>v*100, parse:v=>v/100 },
+];
+
+function updateThresholdMeter(){
+  document.getElementById('meterTh').style.bottom = (P.threshold * 100) + '%';
+}
+
+function bindParam(def){
+  const slider = document.getElementById(def.id);
+  const valEl  = document.getElementById('v' + def.id[0].toUpperCase() + def.id.slice(1));
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const step = parseFloat(slider.step);
+
+  const display = () => {
+    const d = def.disp(P[def.key]);
+    return (def.signed && d > 0 ? '+' : '') + d.toFixed(def.dec);
+  };
+  const syncVal = () => { valEl.value = display(); };
+  const after = () => {
+    applyStatic();
+    if (def.key === 'threshold') updateThresholdMeter();
+  };
+
+  slider.addEventListener('input', () => {
+    P[def.key] = parseFloat(slider.value);
+    syncVal();
+    after();
+  });
+
+  const commit = () => {
+    let num = parseFloat(valEl.value.trim());
+    if (isNaN(num)) { syncVal(); return; }
+    num = def.parse(num);                    // 显示单位 → 内部值
+    num = Math.min(max, Math.max(min, num)); // 越界钳制
+    num = Math.round(num / step) * step;     // 吸附到步进网格
+    num = Math.min(max, Math.max(min, num));
+    P[def.key] = num;
+    slider.value = num;
+    syncVal();
+    after();
+  };
+
+  valEl.addEventListener('change', commit);   // Enter / 失焦时提交
+  valEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); valEl.blur(); }
+    else if (e.key === 'Escape'){ syncVal(); valEl.blur(); }
+  });
+  valEl.addEventListener('focus', () => valEl.select());
+
+  syncVal();
+}
+function applyStatic(){
+  if (!ctx) return; // 音频上下文尚未创建时忽略
+  const t = ctx.currentTime;
+  const x = P.mix * Math.PI / 2;              // 等功率干湿交叉淡化
+  dryGain.gain.setTargetAtTime(Math.cos(x), t, 0.03);
+  wetGain.gain.setTargetAtTime(Math.sin(x), t, 0.03);
+  feedbackGain.gain.setTargetAtTime(P.feedback, t, 0.03);
+}
+
+PARAM_DEFS.forEach(bindParam);
+
+document.getElementById('lfoWave').addEventListener('change', e => P.lfoWave = e.target.value);
+document.getElementById('trigResetsLfo').addEventListener('change', e => P.trigResetsLfo = e.target.checked);
+document.getElementById('padMode').addEventListener('change', e => {
+  P.padMode = e.target.checked;
+  if (!P.padMode) allPadOff();
+});
+
+/* 键盘映射 */
+function isFormTarget(el){
+  return el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+}
+window.addEventListener('keydown', e => {
+  if (isFormTarget(e.target)) return; // 正在输入参数时不触发琴键
+  const m = KEYMAP[e.key.toLowerCase()];
+  if (m == null) return;
+  if (e.repeat) return;
+  const el = document.querySelector('.key[data-midi="' + m + '"]');
+  press(m, el);
+});
+window.addEventListener('keyup', e => {
+  if (isFormTarget(e.target)) return;
+  const m = KEYMAP[e.key.toLowerCase()];
+  if (m == null) return;
+  const el = document.querySelector('.key[data-midi="' + m + '"]');
+  release(m, el);
+});
+
+/* ================= 主循环 ================= */
+let lastT = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (ctx) update(dt);
+
+  drawScope();
+  drawChartEnv();
+  drawChartDly();
+  drawTransfer();
+
+  // 数值显示
+  document.getElementById('fbLevel').textContent = rawRms.toFixed(3);
+  document.getElementById('fbEnv').textContent = env.toFixed(3);
+  document.getElementById('fbDly').textContent = currentDelay.toFixed(1) + ' ms';
+  document.getElementById('fbTrig').textContent = trigCount;
+  document.getElementById('numEnv').textContent = env.toFixed(3);
+  document.getElementById('numRms').textContent = rawRms.toFixed(3);
+  document.getElementById('numDly').textContent = currentDelay.toFixed(1) + ' ms';
+  document.getElementById('numLfo').textContent = (lfoValue>=0?'+':'') + lfoValue.toFixed(2);
+  const pv = Math.round(panVal * 100);
+  document.getElementById('numPan').textContent = pv === 0 ? 'C' : (pv > 0 ? 'R' + pv : 'L' + (-pv));
+  document.getElementById('numVol').textContent = (tremVal * 100).toFixed(0) + '%';
+  document.getElementById('trigCount').textContent = trigCount;
+  document.getElementById('meterFill').style.height = (env*100) + '%';
+
+  // 门限 LED
+  const gate = env >= P.threshold;
+  document.getElementById('ledGate').className = 'led' + (gate ? ' gate' : '');
+
+  requestAnimationFrame(loop);
+}
+
+/* ================= 启动 ================= */
+buildPiano();
+document.getElementById('meterTh').style.bottom = (P.threshold*100) + '%';
+window.addEventListener('resize', () => { /* canvas 尺寸在每帧 setupCanvas 中自适应 */ });
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

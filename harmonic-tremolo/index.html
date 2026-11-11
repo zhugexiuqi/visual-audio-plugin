@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harmonic Tremolo · 谐波颤音</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b23; --panel2:#1c232d; --border:#2a3542;
+    --text:#d7dee8; --dim:#8a97a6; --cyan:#3ddad7; --cyan2:#7ff0ec;
+    --orange:#ff8a3d; --green:#55e07a; --purple:#a78bfa; --yellow:#ffd166;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;min-height:100vh;}
+  header{padding:18px 22px 14px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#131924,#0e1116);}
+  header h1{margin:0 0 6px;font-size:20px;letter-spacing:.5px;}
+  header h1 .acc{color:var(--cyan);}
+  header p{margin:0;color:var(--dim);font-size:13px;line-height:1.6;max-width:980px;}
+  header p b{color:var(--text);}
+
+  main{display:grid;grid-template-columns:1.05fr 1.55fr .92fr;gap:14px;padding:14px 16px 22px;align-items:start;}
+  @media (max-width:1150px){main{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+  .panel h2{margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);display:flex;align-items:center;gap:8px;}
+  .panel h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+
+  /* Piano */
+  .piano-wrap{position:relative;width:100%;user-select:none;-webkit-user-select:none;touch-action:none;}
+  .white-row{display:flex;}
+  .key{cursor:pointer;position:relative;}
+  .key.white{flex:1;height:150px;background:linear-gradient(180deg,#fbfbf6,#e6e7e0);border:1px solid #1b1e22;border-radius:0 0 6px 6px;}
+  .key.white:hover{background:#f0efe6;}
+  .key.white.active{background:linear-gradient(180deg,#ffe08a,#f2c14e);}
+  .key.black{position:absolute;top:0;height:92px;background:linear-gradient(180deg,#3a3f47,#0d0f12);border:1px solid #000;border-radius:0 0 4px 4px;box-shadow:0 3px 5px rgba(0,0,0,.5);z-index:2;}
+  .key.black:hover{background:linear-gradient(180deg,#4a5058,#1a1d22);}
+  .key.black.active{background:linear-gradient(180deg,#f2c14e,#c98f1b);}
+  .key .lbl{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:10px;color:#8a8a8a;pointer-events:none;}
+  .key.black .lbl{color:#9aa0a8;}
+  .key.white.hl-c .lbl{color:#0a7a6b;font-weight:700;}
+  .hint{margin-top:8px;color:var(--dim);font-size:12px;}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:8px 0;cursor:pointer;}
+  .chk input{accent-color:var(--orange);width:15px;height:15px;cursor:pointer;}
+
+  /* Viz */
+  .viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .viz-grid .full{grid-column:1 / -1;}
+  canvas{display:block;width:100%;border-radius:8px;background:#0a0d11;border:1px solid var(--border);}
+  #tremolo{height:180px;}
+  #crossoverChart,#scope{height:140px;}
+  .cap{font-size:10.5px;color:var(--dim);margin:4px 2px 0;letter-spacing:.3px;}
+  .cap .k{color:var(--text);font-weight:600;}
+
+  .meter-row{display:flex;align-items:stretch;gap:18px;justify-content:center;padding-top:4px;}
+  .meter-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;min-width:80px;}
+  .meter-v{width:40px;height:130px;background:#0a0d11;border:1px solid var(--border);border-radius:8px;position:relative;overflow:hidden;}
+  .meter-fill{position:absolute;left:0;right:0;bottom:0;height:0%;transition:none;}
+  .meter-fill.low{background:linear-gradient(180deg,var(--cyan2),var(--cyan));box-shadow:0 0 12px rgba(61,218,215,.5);}
+  .meter-fill.high{background:linear-gradient(180deg,#ffb37a,var(--orange));box-shadow:0 0 12px rgba(255,138,61,.5);}
+  .meter-v .scale{position:absolute;left:4px;top:2px;font-size:9px;color:#4b5563;z-index:3;}
+  .meter-v .scale.b{top:auto;bottom:2px;}
+  .info{font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9;}
+
+  /* Controls */
+  .ctl{display:grid;grid-template-columns:1fr minmax(70px,1.25fr) 64px;align-items:center;gap:8px;margin:8px 0;}
+  .ctl label{font-size:12.5px;color:var(--text);}
+  .ctl label small{color:var(--dim);font-size:10.5px;display:block;}
+  .ctl input[type=range]{width:100%;accent-color:var(--cyan);cursor:pointer;}
+  .ctl input.val{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--cyan2);font-family:Consolas,monospace;font-size:12px;padding:4px 6px;text-align:right;outline:none;}
+  .ctl input.val.purple{color:var(--purple);}
+  .ctl input.val:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(61,218,215,.18);}
+  .group-title{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--border);}
+  .group-title:first-child{margin-top:0;padding-top:0;border-top:none;}
+  select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12.5px;width:100%;cursor:pointer;}
+  .legend{font-size:11px;color:var(--dim);line-height:1.7;}
+  .legend .c{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Harmonic Tremolo <span class="acc">谐波颤音</span></h1>
+  <p>
+    核心逻辑：把信号<b>分频</b>成<b>低频 / 高频</b>两路，再用<b>相位相反（相差 180°）</b>的两个颤音波形分别调制这两路——
+    低频变响时高频变弱，反之亦然。于是声音不只是音量起伏，而是<b>明暗、厚薄交替</b>，比普通颤音更"有律动、有色彩"。
+    点击琴键（可勾选 Pad 持续发声），观察下方两路反相波形如何此起彼伏。
+  </p>
+</header>
+
+<main>
+  <!-- Piano -->
+  <section class="panel">
+    <h2><span class="dot"></span>信号源 · 钢琴</h2>
+    <div class="piano-wrap" id="pianoWrap"></div>
+    <div class="hint">点击琴键（或键盘 A–K）发声 · 声音送入谐波颤音效果器</div>
+    <label class="chk" style="margin-top:10px;">
+      <input id="padMode" type="checkbox">
+      Pad 持续模式：按住持续发声（弹和弦），松开渐停
+    </label>
+  </section>
+
+  <!-- Viz -->
+  <section class="panel">
+    <h2><span class="dot"></span>实时可视化</h2>
+    <div class="viz-grid">
+      <div class="full">
+        <canvas id="tremolo" height="180"></canvas>
+        <div class="cap"><span class="k">低频增益</span>（青）与 <span class="k">高频增益</span>（橙）两条颤音曲线——相位相反、此起彼伏</div>
+      </div>
+      <div>
+        <canvas id="crossoverChart" height="140"></canvas>
+        <div class="cap"><span class="k">分频曲线</span>：低通（青）/ 高通（橙）在分频点处把信号切成两路</div>
+      </div>
+      <div>
+        <canvas id="scope" height="140"></canvas>
+        <div class="cap"><span class="k">输入波形</span></div>
+      </div>
+      <div class="full meter-row">
+        <div class="meter-col">
+          <div class="meter-v">
+            <span class="scale">1.0</span><span class="scale b">0</span>
+            <div class="meter-fill low" id="meterLowFill"></div>
+          </div>
+          <div class="cap">低频 Low</div>
+          <div class="info" id="numLow" style="color:var(--cyan);">100%</div>
+        </div>
+        <div class="meter-col">
+          <div class="meter-v">
+            <span class="scale">1.0</span><span class="scale b">0</span>
+            <div class="meter-fill high" id="meterHighFill"></div>
+          </div>
+          <div class="cap">高频 High</div>
+          <div class="info" id="numHigh" style="color:var(--orange);">100%</div>
+        </div>
+        <div class="meter-col" style="justify-content:center;">
+          <div class="info">
+            分频 <span id="numXover" style="color:var(--yellow);">800Hz</span><br>
+            速率 <span id="numRate" style="color:var(--purple);">2.00Hz</span><br>
+            相位 <span id="numPhase" style="color:var(--purple);">0°</span><br>
+            深度 <span id="numDepth" style="color:var(--purple);">70%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Controls -->
+  <aside class="panel">
+    <h2><span class="dot" style="background:var(--orange);box-shadow:0 0 8px var(--orange);"></span>参数控制</h2>
+
+    <div class="group-title">分频 CROSSOVER</div>
+    <div class="ctl">
+      <label>分频点<small>Crossover · Hz（低/高切分位置）</small></label>
+      <input id="crossover" type="range" min="100" max="5000" step="10" value="800">
+      <input class="val" id="vCrossover" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="800">
+    </div>
+
+    <div class="group-title">颤音 TREMOLO</div>
+    <div class="ctl">
+      <label>速率<small>Rate · Hz</small></label>
+      <input id="rate" type="range" min="0.05" max="12" step="0.05" value="2">
+      <input class="val purple" id="vRate" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="2.00">
+    </div>
+    <div class="ctl">
+      <label>深度<small>Depth · %（0=无调制 / 100=完全交替）</small></label>
+      <input id="depth" type="range" min="0" max="1" step="0.01" value="0.7">
+      <input class="val purple" id="vDepth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="70">
+    </div>
+    <div class="ctl">
+      <label>波形<small>Waveform</small></label>
+      <select id="wave" style="grid-column:2 / 4;">
+        <option value="sine">正弦 Sine</option>
+        <option value="triangle">三角 Triangle</option>
+        <option value="square">方波 Square</option>
+        <option value="saw">锯齿 Saw</option>
+      </select>
+    </div>
+
+    <div class="group-title">图例</div>
+    <div class="legend">
+      <span><span class="c" style="background:var(--cyan);"></span>低频通路（低通滤波 + 颤音）</span><br>
+      <span><span class="c" style="background:var(--orange);"></span>高频通路（高通滤波 + 反相颤音）</span><br>
+      <span><span class="c" style="background:var(--green);"></span>输入波形</span>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+
+/* ================= 音频与状态 ================= */
+let ctx = null;
+let pianoBus, masterInput, analyser, timeData;
+let lowFilter, highFilter, lowGain, highGain, masterOut, comp;
+let lfoPhase = 0, lfoValue = 0;
+let lowVal = 1, highVal = 1;
+
+const P = {
+  crossover: 800, rate: 2, depth: 0.7, wave: 'sine', padMode: false,
+};
+
+const HIST_LEN = 512;
+const lowHist = new Float32Array(HIST_LEN);
+const highHist = new Float32Array(HIST_LEN);
+let histIdx = 0, histCount = 0;
+
+/* ================= 钢琴 ================= */
+const LOW = 48, HIGH = 84;
+const BLACK = new Set([1,3,6,8,10]);
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const freqOf = m => 440 * Math.pow(2, (m - 69) / 12);
+const nameOf = m => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const whiteNotes = [], blackNotes = [];
+for (let m = LOW; m <= HIGH; m++) (BLACK.has(m % 12) ? blackNotes : whiteNotes).push(m);
+
+const KEYMAP = {
+  a:60, w:61, s:62, e:63, d:64, f:65, t:66, g:67, y:68, h:69, u:70, j:71,
+  k:72, o:73, l:74, p:75, ';':76, "'":77,
+};
+
+function buildPiano(){
+  const wrap = document.getElementById('pianoWrap');
+  const row = document.createElement('div');
+  row.className = 'white-row';
+  const whiteCount = whiteNotes.length;
+  const blackW = 0.60 / whiteCount * 100;
+
+  const mk = (m, cls) => {
+    const k = document.createElement('div');
+    k.className = 'key ' + cls;
+    k.dataset.midi = m;
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = nameOf(m);
+    k.appendChild(lbl);
+    k.addEventListener('pointerdown', e => { e.preventDefault(); k.setPointerCapture(e.pointerId); press(m, k); });
+    k.addEventListener('pointerup',   e => { e.preventDefault(); release(m, k); });
+    k.addEventListener('pointercancel', e => { e.preventDefault(); release(m, k); });
+    return k;
+  };
+
+  whiteNotes.forEach(m => row.appendChild(mk(m, 'white')));
+  wrap.appendChild(row);
+  blackNotes.forEach(m => {
+    const whiteBefore = whiteNotes.filter(w => w < m).length;
+    const left = (whiteBefore / whiteCount) * 100 - blackW / 2;
+    const k = mk(m, 'black');
+    k.style.width = blackW + '%';
+    k.style.left = left + '%';
+    wrap.appendChild(k);
+  });
+  document.querySelectorAll('.key.white').forEach(k => {
+    if (nameOf(+k.dataset.midi).startsWith('C')) k.classList.add('hl-c');
+  });
+}
+
+function press(m, el){
+  ensureCtx();
+  if (el) el.classList.add('active');
+  if (P.padMode) padNoteOn(m, 0.7 + Math.random() * 0.1);
+  else playNote(m, 0.85 + Math.random() * 0.12);
+}
+function release(m, el){
+  if (el) el.classList.remove('active');
+  if (P.padMode) padNoteOff(m);
+}
+
+/* ================= 音频图 ================= */
+function ensureCtx(){
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  pianoBus = ctx.createGain(); pianoBus.gain.value = 1;
+  masterInput = ctx.createGain(); masterInput.gain.value = 1;
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0;
+  timeData = new Float32Array(analyser.fftSize);
+
+  // 分频：二阶 Butterworth 低通 + 高通（Q=0.707）
+  lowFilter = ctx.createBiquadFilter(); lowFilter.type = 'lowpass';
+  lowFilter.frequency.value = P.crossover; lowFilter.Q.value = 0.707;
+  highFilter = ctx.createBiquadFilter(); highFilter.type = 'highpass';
+  highFilter.frequency.value = P.crossover; highFilter.Q.value = 0.707;
+
+  lowGain = ctx.createGain(); lowGain.gain.value = 1;
+  highGain = ctx.createGain(); highGain.gain.value = 1;
+  masterOut = ctx.createGain(); masterOut.gain.value = 0.8;
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 8; comp.knee.value = 20;
+
+  pianoBus.connect(masterInput);
+  masterInput.connect(analyser);         // 波形显示（tapped）
+  masterInput.connect(lowFilter);
+  masterInput.connect(highFilter);
+  lowFilter.connect(lowGain);
+  highFilter.connect(highGain);
+  lowGain.connect(masterOut);
+  highGain.connect(masterOut);
+  masterOut.connect(comp);
+  comp.connect(ctx.destination);
+}
+
+function playNote(midi, vel){
+  const t = ctx.currentTime;
+  const f = freqOf(midi);
+  const partials = [
+    {r:1,   g:0.62, d:2.6},
+    {r:2,   g:0.30, d:1.7},
+    {r:3,   g:0.17, d:1.1},
+    {r:4,   g:0.10, d:0.7},
+    {r:5,   g:0.06, d:0.45},
+    {r:6.02,g:0.04, d:0.30},
+  ];
+  for (const p of partials){
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f * p.r;
+    osc.detune.value = (Math.random() - 0.5) * 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(p.g * vel, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + p.d);
+    osc.connect(g); g.connect(pianoBus);
+    osc.start(t); osc.stop(t + p.d + 0.2);
+  }
+  const nbuf = (() => {
+    const len = 2048, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i/len, 3);
+    return b;
+  })();
+  const noise = ctx.createBufferSource(); noise.buffer = nbuf;
+  const nf = ctx.createBiquadFilter(); nf.type = 'highpass'; nf.frequency.value = 1200;
+  const ng = ctx.createGain(); ng.gain.value = 0.12 * vel;
+  noise.connect(nf); nf.connect(ng); ng.connect(pianoBus);
+  noise.start(t);
+}
+
+/* ================= Pad 持续发声 ================= */
+const activePadNotes = new Map();
+function padNoteOn(midi, vel){
+  if (activePadNotes.has(midi)) return;
+  const t = ctx.currentTime;
+  const f = freqOf(midi);
+  const voice = ctx.createGain();
+  voice.gain.setValueAtTime(0.0001, t);
+  voice.gain.exponentialRampToValueAtTime(0.95, t + 0.35);
+  voice.connect(pianoBus);
+  const partials = [
+    {r:1, g:0.34}, {r:2, g:0.15}, {r:3, g:0.08}, {r:4, g:0.05}, {r:6, g:0.03},
+  ];
+  const oscs = [];
+  for (const p of partials){
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f * p.r;
+    osc.detune.value = (Math.random() - 0.5) * 5;
+    const g = ctx.createGain();
+    g.gain.value = p.g * vel;
+    osc.connect(g); g.connect(voice);
+    osc.start(t);
+    oscs.push(osc);
+  }
+  const det = ctx.createOscillator();
+  det.type = 'sine'; det.frequency.value = f; det.detune.value = 7;
+  const dg = ctx.createGain(); dg.gain.value = 0.15 * vel;
+  det.connect(dg); dg.connect(voice);
+  det.start(t);
+  oscs.push(det);
+  activePadNotes.set(midi, { voice, oscs });
+}
+function padNoteOff(midi){
+  const n = activePadNotes.get(midi);
+  if (!n) return;
+  const t = ctx.currentTime;
+  const cur = Math.max(n.voice.gain.value, 0.0001);
+  n.voice.gain.cancelScheduledValues(t);
+  n.voice.gain.setValueAtTime(cur, t);
+  n.voice.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+  n.oscs.forEach(o => { try { o.stop(t + 0.8); } catch(e){} });
+  activePadNotes.delete(midi);
+}
+function allPadOff(){ Array.from(activePadNotes.keys()).forEach(m => padNoteOff(m)); }
+
+/* ================= LFO / 更新 ================= */
+function lfoWaveFunc(phase){
+  switch (P.wave){
+    case 'triangle': return (2/Math.PI) * Math.asin(Math.sin(phase));
+    case 'square':   return Math.sin(phase) >= 0 ? 1 : -1;
+    case 'saw':      return ((phase % (2*Math.PI)) / Math.PI) - 1;
+    default:         return Math.sin(phase);
+  }
+}
+
+function update(dt){
+  analyser.getFloatTimeDomainData(timeData);
+
+  lfoPhase += 2 * Math.PI * P.rate * dt;
+  if (lfoPhase > 2 * Math.PI) lfoPhase -= 2 * Math.PI;
+  lfoValue = lfoWaveFunc(lfoPhase);
+
+  // 相位相反的两路颤音：低频 = 1-depth*(0.5+0.5*LFO)，高频 = 1-depth*(0.5-0.5*LFO)
+  lowVal  = Math.max(0, Math.min(1, 1 - P.depth * (0.5 + 0.5 * lfoValue)));
+  highVal = Math.max(0, Math.min(1, 1 - P.depth * (0.5 - 0.5 * lfoValue)));
+  lowGain.gain.setTargetAtTime(lowVal, ctx.currentTime, 0.01);
+  highGain.gain.setTargetAtTime(highVal, ctx.currentTime, 0.01);
+
+  lowHist[histIdx] = lowVal;
+  highHist[histIdx] = highVal;
+  histIdx = (histIdx + 1) % HIST_LEN;
+  if (histCount < HIST_LEN) histCount++;
+}
+
+/* ================= Canvas 工具 ================= */
+const canvasInfo = new WeakMap();
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  let info = canvasInfo.get(cv);
+  if (!info){ info = { h: parseInt(cv.getAttribute('height'), 10) || 150 }; canvasInfo.set(cv, info); }
+  const w = cv.clientWidth || cv.parentElement.clientWidth || 300;
+  const pw = Math.round(w * dpr), ph = Math.round(info.h * dpr);
+  if (cv.width !== pw || cv.height !== ph){ cv.width = pw; cv.height = ph; }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c, w, h: info.h };
+}
+
+function drawTremolo(){
+  const cv = document.getElementById('tremolo');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  // 网格：增益 0 / 0.5 / 1
+  c.strokeStyle = 'rgba(255,255,255,0.06)';
+  c.lineWidth = 1;
+  [0, 0.5, 1].forEach(g => {
+    const y = h - g * h;
+    c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke();
+  });
+
+  const yOf = v => h - v * h;
+  // 低频增益曲线（青）
+  c.strokeStyle = '#3ddad7'; c.lineWidth = 1.8;
+  c.beginPath();
+  for (let i = 0; i < histCount; i++){
+    const idx = (histIdx - histCount + i + HIST_LEN) % HIST_LEN;
+    const x = (i / (HIST_LEN-1)) * w;
+    const y = yOf(lowHist[idx]);
+    i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+  }
+  c.stroke();
+  // 高频增益曲线（橙）
+  c.strokeStyle = '#ff8a3d'; c.lineWidth = 1.8;
+  c.beginPath();
+  for (let i = 0; i < histCount; i++){
+    const idx = (histIdx - histCount + i + HIST_LEN) % HIST_LEN;
+    const x = (i / (HIST_LEN-1)) * w;
+    const y = yOf(highHist[idx]);
+    i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+  }
+  c.stroke();
+
+  c.fillStyle = '#8a97a6'; c.font = '10px Consolas';
+  c.fillText('增益 1.0', 6, 12);
+  c.fillText('0', 6, h - 6);
+}
+
+function drawCrossover(){
+  const cv = document.getElementById('crossoverChart');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+
+  const fc = P.crossover;
+  const fmin = 50, fmax = 10000;
+  const xOf = f => Math.log(f / fmin) / Math.log(fmax / fmin) * w;
+  const yOf = m => h - 6 - m * (h - 14);
+
+  // 网格与刻度
+  c.strokeStyle = 'rgba(255,255,255,0.06)';
+  [0.25, 0.5, 0.75].forEach(m => {
+    const y = yOf(m);
+    c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke();
+  });
+
+  // 低通 |H|=1/sqrt(1+(f/fc)^4)
+  c.strokeStyle = '#3ddad7'; c.lineWidth = 1.8;
+  c.beginPath();
+  for (let x = 0; x <= w; x += 2){
+    const f = fmin * Math.pow(fmax / fmin, x / w);
+    const m = 1 / Math.sqrt(1 + Math.pow(f / fc, 4));
+    const y = yOf(m);
+    x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+  }
+  c.stroke();
+  // 高通 |H|=1/sqrt(1+(fc/f)^4)
+  c.strokeStyle = '#ff8a3d'; c.lineWidth = 1.8;
+  c.beginPath();
+  for (let x = 0; x <= w; x += 2){
+    const f = fmin * Math.pow(fmax / fmin, x / w);
+    const m = 1 / Math.sqrt(1 + Math.pow(fc / f, 4));
+    const y = yOf(m);
+    x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+  }
+  c.stroke();
+
+  // 分频点竖线
+  const xc = xOf(fc);
+  c.strokeStyle = 'rgba(255,209,102,0.9)'; c.lineWidth = 1.2; c.setLineDash([4,4]);
+  c.beginPath(); c.moveTo(xc, 0); c.lineTo(xc, h); c.stroke(); c.setLineDash([]);
+
+  c.fillStyle = '#8a97a6'; c.font = '10px Consolas';
+  c.fillText('50Hz', 4, h - 6);
+  c.fillText('10kHz', w - 34, h - 6);
+  c.fillStyle = '#ffd166';
+  c.fillText(fc + 'Hz', Math.min(xc + 4, w - 44), 12);
+}
+
+function drawScope(){
+  const cv = document.getElementById('scope');
+  const { c, w, h } = setupCanvas(cv);
+  c.clearRect(0, 0, w, h);
+  c.strokeStyle = 'rgba(255,255,255,0.05)';
+  c.beginPath(); c.moveTo(0, h/2); c.lineTo(w, h/2); c.stroke();
+  if (timeData){
+    const n = timeData.length;
+    c.strokeStyle = '#55e07a'; c.lineWidth = 1.4;
+    c.beginPath();
+    for (let i = 0; i < n; i++){
+      const x = (i / (n-1)) * w;
+      const y = h/2 - timeData[i] * (h/2) * 0.92;
+      i === 0 ? c.moveTo(x,y) : c.lineTo(x,y);
+    }
+    c.stroke();
+  }
+}
+
+/* ================= UI 绑定 ================= */
+const PARAM_DEFS = [
+  { id:'crossover', key:'crossover', dec:0, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'rate',      key:'rate',      dec:2, signed:false, disp:v=>v,     parse:v=>v },
+  { id:'depth',     key:'depth',     dec:0, signed:false, disp:v=>v*100, parse:v=>v/100 },
+];
+
+function applyStatic(){
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  lowFilter.frequency.setTargetAtTime(P.crossover, t, 0.02);
+  highFilter.frequency.setTargetAtTime(P.crossover, t, 0.02);
+}
+
+function bindParam(def){
+  const slider = document.getElementById(def.id);
+  const valEl  = document.getElementById('v' + def.id[0].toUpperCase() + def.id.slice(1));
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const step = parseFloat(slider.step);
+
+  const display = () => {
+    const d = def.disp(P[def.key]);
+    return (def.signed && d > 0 ? '+' : '') + d.toFixed(def.dec);
+  };
+  const syncVal = () => { valEl.value = display(); };
+
+  slider.addEventListener('input', () => {
+    P[def.key] = parseFloat(slider.value);
+    syncVal();
+    applyStatic();
+  });
+
+  const commit = () => {
+    let num = parseFloat(valEl.value.trim());
+    if (isNaN(num)) { syncVal(); return; }
+    num = def.parse(num);
+    num = Math.min(max, Math.max(min, num));
+    num = Math.round(num / step) * step;
+    num = Math.min(max, Math.max(min, num));
+    P[def.key] = num;
+    slider.value = num;
+    syncVal();
+    applyStatic();
+  };
+
+  valEl.addEventListener('change', commit);
+  valEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); valEl.blur(); }
+    else if (e.key === 'Escape'){ syncVal(); valEl.blur(); }
+  });
+  valEl.addEventListener('focus', () => valEl.select());
+  syncVal();
+}
+
+PARAM_DEFS.forEach(bindParam);
+
+document.getElementById('wave').addEventListener('change', e => P.wave = e.target.value);
+document.getElementById('padMode').addEventListener('change', e => {
+  P.padMode = e.target.checked;
+  if (!P.padMode) allPadOff();
+});
+
+/* 键盘映射 */
+function isFormTarget(el){
+  return el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+}
+window.addEventListener('keydown', e => {
+  if (isFormTarget(e.target)) return;
+  const m = KEYMAP[e.key.toLowerCase()];
+  if (m == null) return;
+  if (e.repeat) return;
+  const el = document.querySelector('.key[data-midi="' + m + '"]');
+  press(m, el);
+});
+window.addEventListener('keyup', e => {
+  if (isFormTarget(e.target)) return;
+  const m = KEYMAP[e.key.toLowerCase()];
+  if (m == null) return;
+  const el = document.querySelector('.key[data-midi="' + m + '"]');
+  release(m, el);
+});
+
+/* ================= 主循环 ================= */
+let lastT = performance.now();
+function loop(now){
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (ctx) update(dt);
+
+  drawTremolo();
+  drawCrossover();
+  drawScope();
+
+  document.getElementById('meterLowFill').style.height = (lowVal * 100) + '%';
+  document.getElementById('meterHighFill').style.height = (highVal * 100) + '%';
+  document.getElementById('numLow').textContent = (lowVal * 100).toFixed(0) + '%';
+  document.getElementById('numHigh').textContent = (highVal * 100).toFixed(0) + '%';
+  document.getElementById('numXover').textContent = P.crossover + 'Hz';
+  document.getElementById('numRate').textContent = P.rate.toFixed(2) + 'Hz';
+  document.getElementById('numPhase').textContent = Math.round(lfoPhase / (2*Math.PI) * 360) + '°';
+  document.getElementById('numDepth').textContent = (P.depth * 100).toFixed(0) + '%';
+
+  requestAnimationFrame(loop);
+}
+
+/* ================= 启动 ================= */
+buildPiano();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
